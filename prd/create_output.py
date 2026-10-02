@@ -58,6 +58,7 @@ def start_aria2c_download(recordings: List[Recording], output: str) -> None:
             f"--max-concurrent-downloads={Config.ARIA2C_CONCURRENT_DOWNLOADS}",
             f"--max-connection-per-server={Config.ARIA2C_CONNECTIONS}",
             "--auto-file-renaming=false",
+            "--disable-ipv6=true",
         ]
     )
 

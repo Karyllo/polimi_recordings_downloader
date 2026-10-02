@@ -35,8 +35,8 @@ def extract_id_from_url(url: str, ticket: str) -> str:
     ):
         res: Response = requests.get(url, cookies={"ticket": ticket})
         id_search = re.search(
-            "https:\/\/politecnicomilano\.webex\.com\/recordingservice\/sites\/politecnicomilano\/recording\/playback\/([a-z,0-9]*)",
-            res.text,
+            "https:\\/\\/politecnicomilano\\.webex\\.com\\/recordingservice\\/sites\\/politecnicomilano\\/recording\\/playback\\/([a-z0-9]*)",
+            res.text + "\n" + res.url,
         )
         if not (id_search):
             raise RuntimeError("Was not able to extract video id from url.")

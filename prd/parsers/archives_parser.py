@@ -1,7 +1,7 @@
 from datetime import datetime
 from itertools import repeat
 from multiprocessing.pool import ThreadPool
-from typing import List
+from typing import List, Optional
 import requests
 import re
 from bs4 import BeautifulSoup, Tag
@@ -28,7 +28,6 @@ class ArchivesParser(Parser):
         """
         self.cookie_ticket = cookie_ticket
         self.cookie_SSL_JSESSIONID = cookie_SSL_JSESSIONID
-
 
     def parse(self, url: str) -> List[Recording]:
         """Parse an url of the recording archives.
@@ -80,7 +79,7 @@ class ArchivesParser(Parser):
                 self._generate_recording_from_row,
                 zip(rows, repeat(is_UserListActivity)),
             )
-
+        
         return recordings
 
     def _generate_recording_from_row(
@@ -102,20 +101,36 @@ class ArchivesParser(Parser):
         )
         video_id: str = extract_id_from_url(video_url, ticket=self.cookie_ticket)
 
-        if not is_UserListActivity:
-            recording_datetime: datetime = datetime.strptime(
-                cells[2].text.strip(), "%d/%m/%Y %H:%M"
-            )
-            course: str = cells[3].text
-            subject: str = cells[5].text
-            academic_year: str = cells[1].text.replace(" / ", "-")
-        else:
-            recording_datetime: datetime = datetime.strptime(
-                cells[1].text.strip(), "%d/%m/%Y %H:%M"
-            )
-            course: str = cells[2].text.replace("\n", " ")
-            subject: str = cells[4].text.replace("\n", " ")
-            academic_year = extract_academic_year_from_datetime(recording_datetime)
+        try:
+            if not is_UserListActivity:
+                date_str = cells[2].text.strip()
+                recording_datetime: datetime = datetime.strptime(
+                    date_str, "%d/%m/%Y %H:%M"
+                )
+                course: str = cells[3].text
+                subject: str = cells[5].text
+                academic_year: str = cells[1].text.replace(" / ", "-")
+            else:
+                date_str = cells[1].text.strip()
+                recording_datetime: datetime = datetime.strptime(
+                    date_str, "%d/%m/%Y %H:%M"
+                )
+                course: str = cells[2].text.replace("\n", " ")
+                subject: str = cells[4].text.replace("\n", " ")
+                academic_year = extract_academic_year_from_datetime(recording_datetime)
+        except ValueError:
+            # Se la data non è valida, usa la data attuale come segnaposto e continua
+            print(f"\n!!! ATTENZIONE: Trovata una data non valida ('{date_str}'), verrà usata la data attuale come segnaposto.\n")
+            recording_datetime = datetime.now()
+            if not is_UserListActivity:
+                course: str = cells[3].text
+                subject: str = cells[5].text
+                academic_year: str = cells[1].text.replace(" / ", "-")
+            else:
+                course: str = cells[2].text.replace("\n", " ")
+                subject: str = cells[4].text.replace("\n", " ")
+                # Non possiamo estrarre l'anno da una data non valida, usiamo un segnaposto
+                academic_year = "ANNO-SCONOSCIUTO"
 
         course: str = course.replace("\n", " ")
         subject: str = subject.replace("\n", " ")
