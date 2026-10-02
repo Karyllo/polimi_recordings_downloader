@@ -3,4 +3,4 @@ output
 input
 __pycache__
 .vscode
-.pytest_cache
+.pytest_cachecookies.txt

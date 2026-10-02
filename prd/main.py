@@ -33,20 +33,26 @@ def archives(
     create_xlsx: bool = typer.Option(True, help="Generate xlsx"),
 ) -> None:
     """Download Polimi lessons recordings from the recordings archives url."""
-    # Get cookies
+    # Get cookies: ticket (Webex) è obbligatorio; per recman servono JSESSIONID + INGRESSCOOKIE
+    # (onlineservices.polimi.it) oppure SSL_JSESSIONID (vecchio www11.ceda.polimi.it)
     try:
-        cookie_SSL_JSESSIONID: str = get_cookie("SSL_JSESSIONID")
         cookie_ticket: str = get_cookie("ticket")
     except ValueError as e:
         print("[red]" + str(e) + "[/red]")
         raise typer.Exit(1)
+    recman_cookies = {}
+    for name in ("JSESSIONID", "INGRESSCOOKIE", "SSL_JSESSIONID"):
+        try:
+            recman_cookies[name] = get_cookie(name)
+        except ValueError:
+            pass
+    if not recman_cookies:
+        print("[red]The cookie JSESSIONID is not set (set JSESSIONID and INGRESSCOOKIE from onlineservices.polimi.it)[/red]")
+        raise typer.Exit(1)
 
     # Get recordings
     print("Recordings parsing from archives URL started")
-    parser: ArchivesParser = ArchivesParser(
-        cookie_SSL_JSESSIONID=cookie_SSL_JSESSIONID,
-        cookie_ticket=cookie_ticket,
-    )
+    parser: ArchivesParser = ArchivesParser(cookie_ticket=cookie_ticket, cookies=recman_cookies)
     try:
         recordings: List[Recording] = parser.parse(url)
     except Exception as e:

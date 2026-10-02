@@ -44,8 +44,7 @@ def validate_cookie_name(name: str) -> str:
     Returns:
         str: The name as is.
     """
-    if name not in ["SSL_JSESSIONID", "ticket", "MoodleSession"]:
-        raise typer.BadParameter(
-            'Possible values are "SSL_JSESSIONID", "ticket" and "MoodleSession".'
-        )
+    allowed = ["SSL_JSESSIONID", "JSESSIONID", "INGRESSCOOKIE", "ticket", "MoodleSession"]
+    if name not in allowed:
+        raise typer.BadParameter("Possible values are " + ", ".join(f'"{a}"' for a in allowed) + ".")
     return name

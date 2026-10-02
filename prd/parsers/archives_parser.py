@@ -1,7 +1,8 @@
 from datetime import datetime
 from itertools import repeat
 from multiprocessing.pool import ThreadPool
-from typing import List, Optional
+from typing import Dict, List, Optional
+from urllib.parse import urljoin, urlparse
 import requests
 import re
 from bs4 import BeautifulSoup, Tag
@@ -15,19 +16,27 @@ from prd.webex_api import Recording, extract_id_from_url, generate_recording_fro
 class ArchivesParser(Parser):
     """Class to parse archives pages."""
 
+    # L'archivio si è spostato da www11.ceda.polimi.it a onlineservices.polimi.it (cookie JSESSIONID + INGRESSCOOKIE)
+    ALLOWED_HOSTS = ("www11.ceda.polimi.it", "onlineservices.polimi.it")
+    PATH_PREFIX = "/recman_frontend/recman_frontend/controller/"
+
     def __init__(
         self,
         cookie_ticket: str,
-        cookie_SSL_JSESSIONID: str
+        cookie_SSL_JSESSIONID: Optional[str] = None,
+        cookies: Optional[Dict[str, str]] = None,
     ):
         """Create the parser.
 
         Args:
             cookie_ticket (str): The ticket cookie.
-            cookie_SSL_JSESSIONID (str): The SSL_JSESSIONID cookie.
+            cookie_SSL_JSESSIONID (str): The SSL_JSESSIONID cookie (old www11.ceda host).
+            cookies (dict): Recman cookies, e.g. {"JSESSIONID": ..., "INGRESSCOOKIE": ...} (new host).
         """
         self.cookie_ticket = cookie_ticket
-        self.cookie_SSL_JSESSIONID = cookie_SSL_JSESSIONID
+        self.cookies: Dict[str, str] = dict(cookies or {})
+        if cookie_SSL_JSESSIONID:
+            self.cookies["SSL_JSESSIONID"] = cookie_SSL_JSESSIONID
 
     def parse(self, url: str) -> List[Recording]:
         """Parse an url of the recording archives.
@@ -43,29 +52,31 @@ class ArchivesParser(Parser):
             List[Recording]: The list of recordings.
         """
         # Option check
-        if not url.startswith(
-            "https://www11.ceda.polimi.it/recman_frontend/recman_frontend/controller/"
-        ):
+        parsed = urlparse(url)
+        if parsed.scheme != "https" or parsed.netloc not in self.ALLOWED_HOSTS \
+                or not parsed.path.startswith(self.PATH_PREFIX):
             raise ValueError(
-                f"The url must start with 'https://www11.ceda.polimi.it/recman_frontend/recman_frontend/controller/'."
+                "The url must start with https://<host>" + self.PATH_PREFIX
+                + " with host one of: " + ", ".join(self.ALLOWED_HOSTS)
             )
 
-        res: requests.Response = requests.get(
-            url, cookies={"SSL_JSESSIONID": self.cookie_SSL_JSESSIONID}
-        )
-        soup: BeautifulSoup = BeautifulSoup(res.content, "html.parser")
+        soup: BeautifulSoup = self._get_soup(url)
+        # La tabella è paginata (10 per pagina): se c'è il link "tutte" (action=plen_0) si carica quello
+        all_link = next((a["href"] for a in soup.select("a.paginator_link") if "action=plen_0" in a.get("href", "")), None)
+        if all_link:
+            soup = self._get_soup(urljoin(url, all_link))
         rows: List[Tag] = soup.select("tbody.TableDati-tbody tr")
 
         if len(rows) == 0:
             raise RuntimeError(
-                "Zero recordings were found, make sure SSL_JSESSIONID is correct."
+                "Zero recordings were found, make sure the recman cookies are correct "
+                "(JSESSIONID and INGRESSCOOKIE for onlineservices.polimi.it, SSL_JSESSIONID for www11.ceda.polimi.it)."
             )
         print(f"There are {len(rows)} rows in the page")
+        self._base_url = url
 
         # Need to work for both UserListActivity.do and ArchivioListActivity.do
-        is_UserListActivity: bool = url.startswith(
-            "https://www11.ceda.polimi.it/recman_frontend/recman_frontend/controller/UserListActivity.do"
-        )
+        is_UserListActivity: bool = parsed.path.startswith(self.PATH_PREFIX + "UserListActivity.do")
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -97,7 +108,7 @@ class ArchivesParser(Parser):
         cells = row.select("td")
 
         video_url: str = self._get_video_url_from_recman_redirection_link(
-            "https://www11.ceda.polimi.it" + cells[0].select_one("a.Link")["href"]
+            urljoin(self._base_url, cells[0].select_one("a.Link")["href"])   # link relativi (vecchio) o assoluti (nuovo)
         )
         video_id: str = extract_id_from_url(video_url, ticket=self.cookie_ticket)
 
@@ -116,7 +127,10 @@ class ArchivesParser(Parser):
                     date_str, "%d/%m/%Y %H:%M"
                 )
                 course: str = cells[2].text.replace("\n", " ")
-                subject: str = cells[4].text.replace("\n", " ")
+                # "[Forma didattica] argomento": la forma (Lezione/Laboratorio/Esercitazione/Altro) serve a chi
+                # rinomina i file per tipo (sbob la legge dalla colonna Subject dell'xlsx)
+                forma: str = cells[3].text.strip()
+                subject: str = (f"[{forma}] " if forma else "") + cells[4].text.replace("\n", " ").strip()
                 academic_year = extract_academic_year_from_datetime(recording_datetime)
         except ValueError:
             # Se la data non è valida, usa la data attuale come segnaposto e continua
@@ -146,6 +160,10 @@ class ArchivesParser(Parser):
 
         return recording
 
+    def _get_soup(self, url: str) -> BeautifulSoup:
+        res: requests.Response = requests.get(url, cookies=self.cookies)
+        return BeautifulSoup(res.content, "html.parser")
+
     def _get_video_url_from_recman_redirection_link(self, link: str) -> str:
         """Get the video url from the link of the redirection to the recording.
 
@@ -158,9 +176,9 @@ class ArchivesParser(Parser):
         Raises:
             RuntimeError: If unable to extract url from redirection link.
         """
-        res = requests.get(link, cookies={"SSL_JSESSIONID": self.cookie_SSL_JSESSIONID})
+        res = requests.get(link, cookies=self.cookies)
         id_search = re.search(
-            "location\.href='(.*)';",
+            r"location\.href='(.*)';",
             res.text,
         )
         if not (id_search):
