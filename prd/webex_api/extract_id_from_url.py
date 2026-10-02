@@ -44,7 +44,7 @@ def extract_id_from_url(url: str, ticket: str) -> str:
         return id_search.group(1)
     elif url.startswith("https://politecnicomilano.webex.com/recordingservice/"):
         search_str: str = (
-            "https:\/\/politecnicomilano\.webex\.com\/recordingservice\/([a-z,0-9]*)"
+            r"https:\/\/politecnicomilano\.webex\.com\/recordingservice\/([a-z,0-9]*)"
         )
 
         id_search = re.search(search_str, url)

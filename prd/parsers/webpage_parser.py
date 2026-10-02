@@ -38,7 +38,7 @@ class WebpageParser(Parser):
             return (False, None)
 
         pattern_google_redirect = re.compile(
-            "https?\:\/\/www\.google\.com\/url\?q\=(https?\:\/\/politecnicomilano.webex.com\/[^&]*)&.*"
+            r"https?\:\/\/www\.google\.com\/url\?q\=(https?\:\/\/politecnicomilano.webex.com\/[^&]*)&.*"
         )
         try:
             direct_url: str = anchor["href"]

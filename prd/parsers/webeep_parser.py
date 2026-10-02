@@ -99,7 +99,7 @@ class WebeepParser(Parser):
             )
         soup: BeautifulSoup = BeautifulSoup(res.content, "html.parser")
         course: str = soup.select_one("#page-header h2").text
-        academic_year: str = re.search('\s\[(\d+-\d+)\]', course).group(1)
+        academic_year: str = re.search(r'\s\[(\d+-\d+)\]', course).group(1)
         course = re.sub(r'\s\[\d+-\d+\]', '', course)
 
         for a in soup.select(".single-section a.aalink", href=True):
