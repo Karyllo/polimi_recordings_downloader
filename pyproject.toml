@@ -4,6 +4,10 @@ version = "0.1.0"
 description = "Python application to download a batch of lessons recordings from Polimi."
 authors = ["Paolo Basso"]
 license = "MIT"
+packages = [{ include = "prd" }]
+
+[tool.poetry.scripts]
+prd = "prd.main:app"
 
 [tool.poetry.dependencies]
 python = "^3.10"
